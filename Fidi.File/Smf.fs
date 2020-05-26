@@ -168,7 +168,7 @@ let ParseMetaEvent (r: BinaryReader) =
     let t : MetaEventType = EnumOfValue ( r.ReadByte () )
     let l = readVar (r, 0ul) // Length
 
-    // TODO: Check if length matches fixed-length events.
+    // TODO: Check if given length matches fixed-length events.
     match t with
     | MetaEventType.SequenceNumber    -> l, MetaEvent.SequenceNumber ( read16 r )
     | MetaEventType.Text              -> l, MetaEvent.Text ( readString (r, l) )
@@ -226,8 +226,6 @@ let ParseEvent (r: BinaryReader, prevStatus: byte) =
             EventData.MetaEvent ( ParseMetaEvent r )
         | EventType.SysExSimple | EventType.SysExRaw ->
             ParseSysExEvent ( r, et )
-        | x when x > EventType.StatusFlag ->
-            failwith (sprintf "Unknown event type 0x%X" status)
         | _ -> EventData.MidiEvent ( ParseMidiEvent (r, status) )
 
     status, {
