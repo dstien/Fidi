@@ -39,18 +39,14 @@ type Format =
     | Format1 = 1us
     | Format2 = 2us
 
-type DivisionType =
-    | TicksPerQuarterNote
-    | FramesPerSecond
-
 type Division =
     | TicksPerQuarterNote  of uint16
     | SmpteFramesPerSecond of DeltaPerFrame: byte * FramesPerSecond: byte
 
 type Header = {
-    Format: Format
+    Format    : Format
     TrackCount: uint16
-    Division: Division
+    Division  : Division
 }
 
 // Track
