@@ -9,21 +9,21 @@ let read16 (r: BinaryReader) =
     ||| uint16 (r.ReadByte())
 
 let read24 (r: BinaryReader) =
-    uint32 (r.ReadByte ()) <<< 16
-    ||| uint32 (r.ReadByte ()) <<< 8
-    ||| uint32 (r.ReadByte ())
+    uint32 (r.ReadByte()) <<< 16
+    ||| uint32 (r.ReadByte()) <<< 8
+    ||| uint32 (r.ReadByte())
 
 let read32 (r: BinaryReader) =
-    uint32 (r.ReadByte ()) <<< 24
-    ||| uint32 (r.ReadByte ()) <<< 16
-    ||| uint32 (r.ReadByte ()) <<< 8
-    ||| uint32 (r.ReadByte ())
+    uint32 (r.ReadByte()) <<< 24
+    ||| uint32 (r.ReadByte()) <<< 16
+    ||| uint32 (r.ReadByte()) <<< 8
+    ||| uint32 (r.ReadByte())
 
 let rec readVar (r: BinaryReader, prevValue: uint32) =
-    let b = r.ReadByte ()
+    let b = r.ReadByte()
 
     match b &&& 0x80uy with
-    | 0x80uy -> readVar ( r, prevValue + uint32 (b &&& 0x7Fuy) <<< 7 )
+    | 0x80uy -> readVar (r, prevValue + uint32 (b &&& 0x7Fuy) <<< 7)
     | _ -> prevValue + uint32 b
 
 let readData (r: BinaryReader, length: uint32) =
@@ -31,7 +31,7 @@ let readData (r: BinaryReader, length: uint32) =
 
 let readString (r: BinaryReader, length: uint32) =
     // TODO: Try to guess other character encodings.
-    Text.Encoding.ASCII.GetString (readData (r, length))
+    Text.Encoding.ASCII.GetString(readData (r, length))
 
 // Header
 type Format =
@@ -150,13 +150,13 @@ type File = {
 
 let ParseDivision (d: uint16) =
     match d &&& 0x8000us with
-    | 0x8000us -> Division.SmpteFramesPerSecond ( byte (d &&& 0x00FFus), byte ((d &&& 0x7F00us) >>> 8) )
+    | 0x8000us -> Division.SmpteFramesPerSecond(byte (d &&& 0x00FFus), byte ((d &&& 0x7F00us) >>> 8))
     | _ -> Division.TicksPerQuarterNote d
 
 let LoadHeader (r: BinaryReader) =
-    let format : Format = EnumOfValue ( read16 r )
+    let format: Format = EnumOfValue(read16 r)
     let trackcount = read16 r
-    let division = ParseDivision ( read16 r )
+    let division = ParseDivision(read16 r)
 
     ChunkData.Header {
         Format = format
@@ -165,34 +165,33 @@ let LoadHeader (r: BinaryReader) =
     }
 
 let ParseMetaEvent (r: BinaryReader) =
-    let type' : MetaEventType = EnumOfValue ( r.ReadByte () )
+    let type': MetaEventType = EnumOfValue(r.ReadByte())
     let length = readVar (r, 0ul)
 
     // TODO: Check if given length matches fixed-length events.
     let data =
         match type' with
-        | MetaEventType.SequenceNumber    -> MetaEvent.SequenceNumber ( read16 r )
-        | MetaEventType.Text              -> MetaEvent.Text ( readString (r, length) )
-        | MetaEventType.Copyright         -> MetaEvent.Copyright ( readString (r, length) )
-        | MetaEventType.SequenceName      -> MetaEvent.SequenceName ( readString (r, length) )
-        | MetaEventType.InstrumentName    -> MetaEvent.InstrumentName ( readString (r, length) )
-        | MetaEventType.Lyric             -> MetaEvent.Lyric ( readString (r, length))
-        | MetaEventType.Marker            -> MetaEvent.Marker ( readString (r, length))
-        | MetaEventType.CuePoint          -> MetaEvent.CuePoint ( readString (r, length))
-        | MetaEventType.ProgramName       -> MetaEvent.ProgramName ( readString (r, length))
-        | MetaEventType.DeviceName        -> MetaEvent.DeviceName ( readString (r, length))
-        | MetaEventType.MidiChannelPrefix -> MetaEvent.MidiChannelPrefix ( r.ReadByte ())
-        | MetaEventType.MidiPort          -> MetaEvent.MidiPort ( r.ReadByte ())
+        | MetaEventType.SequenceNumber    -> MetaEvent.SequenceNumber(read16 r)
+        | MetaEventType.Text              -> MetaEvent.Text(readString (r, length))
+        | MetaEventType.Copyright         -> MetaEvent.Copyright(readString (r, length))
+        | MetaEventType.SequenceName      -> MetaEvent.SequenceName(readString (r, length))
+        | MetaEventType.InstrumentName    -> MetaEvent.InstrumentName(readString (r, length))
+        | MetaEventType.Lyric             -> MetaEvent.Lyric(readString (r, length))
+        | MetaEventType.Marker            -> MetaEvent.Marker(readString (r, length))
+        | MetaEventType.CuePoint          -> MetaEvent.CuePoint(readString (r, length))
+        | MetaEventType.ProgramName       -> MetaEvent.ProgramName(readString (r, length))
+        | MetaEventType.DeviceName        -> MetaEvent.DeviceName(readString (r, length))
+        | MetaEventType.MidiChannelPrefix -> MetaEvent.MidiChannelPrefix(r.ReadByte())
+        | MetaEventType.MidiPort          -> MetaEvent.MidiPort(r.ReadByte())
         | MetaEventType.EndOfTrack        -> MetaEvent.EndOfTrack
-        | MetaEventType.Tempo             -> MetaEvent.Tempo ( read24 r )
-        | MetaEventType.SmtpeOffset       -> MetaEvent.SmtpeOffset ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
-        | MetaEventType.TimeSignature     -> MetaEvent.TimeSignature ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
-        | MetaEventType.KeySignature      -> MetaEvent.KeySignature ( r.ReadSByte (), r.ReadByte () )
-        | MetaEventType.SequencerEvent    -> MetaEvent.SequencerEvent ( readData (r, length) )
+        | MetaEventType.Tempo             -> MetaEvent.Tempo(read24 r)
+        | MetaEventType.SmtpeOffset       -> MetaEvent.SmtpeOffset(r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte())
+        | MetaEventType.TimeSignature     -> MetaEvent.TimeSignature(r.ReadByte(), r.ReadByte(), r.ReadByte(), r.ReadByte())
+        | MetaEventType.KeySignature      -> MetaEvent.KeySignature(r.ReadSByte(), r.ReadByte())
+        | MetaEventType.SequencerEvent    -> MetaEvent.SequencerEvent(readData (r, length))
         | _ -> failwith (sprintf "Unknown meta event type 0x%X" (EnumToValue type'))
 
-    printfn "meta: %A" data
-    EventData.MetaEvent (length, data)
+    EventData.MetaEvent(length, data)
 
 // TODO: Rename to channel event?
 let ParseMidiEvent (r: BinaryReader, runningStatus: byte option, currentStatus: byte) =
@@ -200,23 +199,27 @@ let ParseMidiEvent (r: BinaryReader, runningStatus: byte option, currentStatus: 
 
     let parse (r: BinaryReader, currentStatus, firstByte) =
         let channel = currentStatus &&& 0x0Fuy
-        let type' : MidiMessageType = EnumOfValue ( (currentStatus &&& 0xF0uy) >>> 4 )
+        let type': MidiMessageType = EnumOfValue((currentStatus &&& 0xF0uy) >>> 4)
 
         let data =
             match type' with
-            | MidiMessageType.NoteOff          -> MidiEvent.NoteOff (firstByte, r.ReadByte ())
-            | MidiMessageType.NoteOn           -> MidiEvent.NoteOn (firstByte, r.ReadByte ())
-            | MidiMessageType.KeyPressure      -> MidiEvent.KeyPressure (firstByte, r.ReadByte ())
-            | MidiMessageType.ControllerChange -> MidiEvent.ControllerChange (firstByte, r.ReadByte ())
-            | MidiMessageType.ProgramChange    -> MidiEvent.ProgramChange (firstByte)
-            | MidiMessageType.ChannelPressure  -> MidiEvent.ChannelPressure (firstByte)
-            | MidiMessageType.PitchBend        -> MidiEvent.PitchBend (firstByte, r.ReadByte ())
+            | MidiMessageType.NoteOff          -> MidiEvent.NoteOff(firstByte, r.ReadByte())
+            | MidiMessageType.NoteOn           -> MidiEvent.NoteOn(firstByte, r.ReadByte())
+            | MidiMessageType.KeyPressure      -> MidiEvent.KeyPressure(firstByte, r.ReadByte())
+            | MidiMessageType.ControllerChange -> MidiEvent.ControllerChange(firstByte, r.ReadByte())
+            | MidiMessageType.ProgramChange    -> MidiEvent.ProgramChange(firstByte)
+            | MidiMessageType.ChannelPressure  -> MidiEvent.ChannelPressure(firstByte)
+            | MidiMessageType.PitchBend        -> MidiEvent.PitchBend(firstByte, r.ReadByte())
             | _ -> failwith (sprintf "Unknown MIDI message type 0x%X" (EnumToValue type'))
 
-        let nextStatus = if isStatus currentStatus then Some currentStatus else runningStatus
-        EventData.MidiEvent (channel, data), nextStatus
+        let nextStatus =
+            if isStatus currentStatus then
+                Some currentStatus
+            else
+                runningStatus
 
-    //printfn "currentStatus: %02X   runningStatus: %A" currentStatus runningStatus
+        EventData.MidiEvent(channel, data), nextStatus
+
     if isStatus currentStatus then
         parse (r, currentStatus, r.ReadByte())
     else
@@ -226,19 +229,20 @@ let ParseMidiEvent (r: BinaryReader, runningStatus: byte option, currentStatus: 
 
 let ParseSysExEvent (r: BinaryReader, eventType: EventType) =
     let length = readVar (r, 0ul)
-    EventData.SysExEvent (length, eventType, readData (r, length))
+    EventData.SysExEvent(length, eventType, readData (r, length))
 
 let rec ParseEvents (r: BinaryReader, runningStatus: byte option, events: Event list) =
     // TODO: Check if exceeding length or reaching EOT with unparsed data
     let delta = readVar (r, 0ul)
-    let currentStatus = r.ReadByte ()
-    let eventType : EventType = EnumOfValue currentStatus
+    let currentStatus = r.ReadByte()
+    let eventType: EventType = EnumOfValue currentStatus
 
     let (data, nextStatus) =
         match eventType with
         | EventType.Meta ->
             (ParseMetaEvent (r), runningStatus)
-        | EventType.SysExSimple | EventType.SysExRaw ->
+        | EventType.SysExSimple
+        | EventType.SysExRaw ->
             (ParseSysExEvent (r, eventType), runningStatus)
         | _ ->
             ParseMidiEvent (r, runningStatus, currentStatus)
@@ -250,18 +254,16 @@ let rec ParseEvents (r: BinaryReader, runningStatus: byte option, events: Event 
     }
 
     match data with
-    | EventData.MetaEvent (_, EndOfTrack) -> event :: events
-    | _ -> ParseEvents (r, nextStatus, event :: events)
+    | EventData.MetaEvent(_, EndOfTrack) -> event :: events
+    | _ -> ParseEvents(r, nextStatus, event :: events)
 
 let LoadTrack (r: BinaryReader) =
     ChunkData.Track {
-        Events =
-            ParseEvents (r, None, [])
-            |> List.rev
+        Events = ParseEvents(r, None, []) |> List.rev
     }
 
 let LoadChunk (r: BinaryReader) =
-    let magic : Magic = EnumOfValue ( r.ReadInt32 () )
+    let magic: Magic = EnumOfValue(r.ReadInt32())
     let length = read32 r
 
     // TODO: Check if length matches content.
@@ -269,20 +271,25 @@ let LoadChunk (r: BinaryReader) =
     {
         Magic = magic
         Length = length
-        Data = match magic with
-                | Magic.Header -> LoadHeader r
-                | Magic.Track  -> LoadTrack r
-                | _ -> failwith (sprintf "Unknown magic bytes %A" magic )
+        Data =
+            match magic with
+            | Magic.Header -> LoadHeader r
+            | Magic.Track  -> LoadTrack r
+            | _ -> failwith (sprintf "Unknown magic bytes %A" magic)
     }
 
 let LoadFile (r: BinaryReader) =
     let header = LoadChunk r
-    let trackCount = match header.Data with | ChunkData.Header h -> h.TrackCount | _ -> failwith "No header"
+
+    let trackCount =
+        match header.Data with
+        | ChunkData.Header h -> h.TrackCount
+        | _ -> failwith "No header"
 
     {
         Header = header
         Tracks = [
-            for track in [1..int trackCount] do
+            for track in [ 1 .. int trackCount ] do
                 // TODO: Check if chunk is track.
                 yield LoadChunk r
         ]
