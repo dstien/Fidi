@@ -115,13 +115,13 @@ type EventType =
     | Meta        = 0xFFuy
 
 type EventData =
-    | MidiEvent  of Channel: byte * MidiEvent // TODO: Channel type?
+    | MidiEvent  of Channel: byte * MidiEvent // TODO: Channel type? Rename to ChannelEvent
     | MetaEvent  of Length: uint32 * MetaEvent
     | SysExEvent of Length: uint32 * Type: EventType * Data: byte[]
 
 type Event = {
     Delta    : uint32
-    Status   : byte
+    Status   : byte // TODO: Remove
     EventData: EventData
 }
 
@@ -165,91 +165,99 @@ let LoadHeader (r: BinaryReader) =
     }
 
 let ParseMetaEvent (r: BinaryReader) =
-    let t : MetaEventType = EnumOfValue ( r.ReadByte () )
-    let l = readVar (r, 0ul) // Length
+    let type' : MetaEventType = EnumOfValue ( r.ReadByte () )
+    let length = readVar (r, 0ul)
 
     // TODO: Check if given length matches fixed-length events.
-    match t with
-    | MetaEventType.SequenceNumber    -> l, MetaEvent.SequenceNumber ( read16 r )
-    | MetaEventType.Text              -> l, MetaEvent.Text ( readString (r, l) )
-    | MetaEventType.Copyright         -> l, MetaEvent.Copyright ( readString (r, l) )
-    | MetaEventType.SequenceName      -> l, MetaEvent.SequenceName ( readString (r, l) )
-    | MetaEventType.InstrumentName    -> l, MetaEvent.InstrumentName ( readString (r, l) )
-    | MetaEventType.Lyric             -> l, MetaEvent.Lyric ( readString (r, l))
-    | MetaEventType.Marker            -> l, MetaEvent.Marker ( readString (r, l))
-    | MetaEventType.CuePoint          -> l, MetaEvent.CuePoint ( readString (r, l))
-    | MetaEventType.ProgramName       -> l, MetaEvent.ProgramName ( readString (r, l))
-    | MetaEventType.DeviceName        -> l, MetaEvent.DeviceName ( readString (r, l))
-    | MetaEventType.MidiChannelPrefix -> l, MetaEvent.MidiChannelPrefix ( r.ReadByte ())
-    | MetaEventType.MidiPort          -> l, MetaEvent.MidiPort ( r.ReadByte ())
-    | MetaEventType.EndOfTrack        -> l, MetaEvent.EndOfTrack
-    | MetaEventType.Tempo             -> l, MetaEvent.Tempo ( read24 r )
-    | MetaEventType.SmtpeOffset       -> l, MetaEvent.SmtpeOffset ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
-    | MetaEventType.TimeSignature     -> l, MetaEvent.TimeSignature ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
-    | MetaEventType.KeySignature      -> l, MetaEvent.KeySignature ( r.ReadSByte (), r.ReadByte () )
-    | MetaEventType.SequencerEvent    -> l, MetaEvent.SequencerEvent ( readData (r, l) )
-    | _ -> failwith (sprintf "Unknown meta event type 0x%X" (EnumToValue t))
+    let data =
+        match type' with
+        | MetaEventType.SequenceNumber    -> MetaEvent.SequenceNumber ( read16 r )
+        | MetaEventType.Text              -> MetaEvent.Text ( readString (r, length) )
+        | MetaEventType.Copyright         -> MetaEvent.Copyright ( readString (r, length) )
+        | MetaEventType.SequenceName      -> MetaEvent.SequenceName ( readString (r, length) )
+        | MetaEventType.InstrumentName    -> MetaEvent.InstrumentName ( readString (r, length) )
+        | MetaEventType.Lyric             -> MetaEvent.Lyric ( readString (r, length))
+        | MetaEventType.Marker            -> MetaEvent.Marker ( readString (r, length))
+        | MetaEventType.CuePoint          -> MetaEvent.CuePoint ( readString (r, length))
+        | MetaEventType.ProgramName       -> MetaEvent.ProgramName ( readString (r, length))
+        | MetaEventType.DeviceName        -> MetaEvent.DeviceName ( readString (r, length))
+        | MetaEventType.MidiChannelPrefix -> MetaEvent.MidiChannelPrefix ( r.ReadByte ())
+        | MetaEventType.MidiPort          -> MetaEvent.MidiPort ( r.ReadByte ())
+        | MetaEventType.EndOfTrack        -> MetaEvent.EndOfTrack
+        | MetaEventType.Tempo             -> MetaEvent.Tempo ( read24 r )
+        | MetaEventType.SmtpeOffset       -> MetaEvent.SmtpeOffset ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
+        | MetaEventType.TimeSignature     -> MetaEvent.TimeSignature ( r.ReadByte (), r.ReadByte (), r.ReadByte (), r.ReadByte () )
+        | MetaEventType.KeySignature      -> MetaEvent.KeySignature ( r.ReadSByte (), r.ReadByte () )
+        | MetaEventType.SequencerEvent    -> MetaEvent.SequencerEvent ( readData (r, length) )
+        | _ -> failwith (sprintf "Unknown meta event type 0x%X" (EnumToValue type'))
 
-let ParseMidiEvent (r: BinaryReader, status: byte) =
-    let t : MidiMessageType = EnumOfValue ( (status &&& 0xF0uy) >>> 4 )
-    let c = status &&& 0x0Fuy // MIDI channel
+    printfn "meta: %A" data
+    EventData.MetaEvent (length, data)
 
-    // TODO: Check invalid channel values.
+// TODO: Rename to channel event?
+let ParseMidiEvent (r: BinaryReader, runningStatus: byte option, currentStatus: byte) =
+    let isStatus sb = sb >= 0x80uy && sb <= 0xEFuy
 
-    match t with
-    | MidiMessageType.NoteOff          -> c, MidiEvent.NoteOff ( r.ReadByte (), r.ReadByte ())
-    | MidiMessageType.NoteOn           -> c, MidiEvent.NoteOn ( r.ReadByte (), r.ReadByte ())
-    | MidiMessageType.KeyPressure      -> c, MidiEvent.KeyPressure ( r.ReadByte (), r.ReadByte ())
-    | MidiMessageType.ControllerChange -> c, MidiEvent.ControllerChange ( r.ReadByte (), r.ReadByte ())
-    | MidiMessageType.ProgramChange    -> c, MidiEvent.ProgramChange ( r.ReadByte () )
-    | MidiMessageType.ChannelPressure  -> c, MidiEvent.ChannelPressure ( r.ReadByte ())
-    | MidiMessageType.PitchBend        -> c, MidiEvent.PitchBend ( r.ReadByte (), r.ReadByte ())
-    | _ -> failwith (sprintf "Unknown MIDI message type 0x%X" (EnumToValue t))
+    let parse (r: BinaryReader, currentStatus, firstByte) =
+        let channel = currentStatus &&& 0x0Fuy
+        let type' : MidiMessageType = EnumOfValue ( (currentStatus &&& 0xF0uy) >>> 4 )
+
+        let data =
+            match type' with
+            | MidiMessageType.NoteOff          -> MidiEvent.NoteOff (firstByte, r.ReadByte ())
+            | MidiMessageType.NoteOn           -> MidiEvent.NoteOn (firstByte, r.ReadByte ())
+            | MidiMessageType.KeyPressure      -> MidiEvent.KeyPressure (firstByte, r.ReadByte ())
+            | MidiMessageType.ControllerChange -> MidiEvent.ControllerChange (firstByte, r.ReadByte ())
+            | MidiMessageType.ProgramChange    -> MidiEvent.ProgramChange (firstByte)
+            | MidiMessageType.ChannelPressure  -> MidiEvent.ChannelPressure (firstByte)
+            | MidiMessageType.PitchBend        -> MidiEvent.PitchBend (firstByte, r.ReadByte ())
+            | _ -> failwith (sprintf "Unknown MIDI message type 0x%X" (EnumToValue type'))
+
+        let nextStatus = if isStatus currentStatus then Some currentStatus else runningStatus
+        EventData.MidiEvent (channel, data), nextStatus
+
+    //printfn "currentStatus: %02X   runningStatus: %A" currentStatus runningStatus
+    if isStatus currentStatus then
+        parse (r, currentStatus, r.ReadByte())
+    else
+        match runningStatus with
+        | Some runningStatus -> parse (r, runningStatus, currentStatus)
+        | None -> failwith "Running status used without prior status byte"
 
 let ParseSysExEvent (r: BinaryReader, eventType: EventType) =
     let length = readVar (r, 0ul)
     EventData.SysExEvent (length, eventType, readData (r, length))
 
-let ParseEvent (r: BinaryReader, prevStatus: byte) =
+let rec ParseEvents (r: BinaryReader, runningStatus: byte option, events: Event list) =
+    // TODO: Check if exceeding length or reaching EOT with unparsed data
     let delta = readVar (r, 0ul)
-    // Running status
-    let status =
-        match r.PeekChar () &&& 0x80 with
-        | 0x80 -> r.ReadByte ()
-        | _ -> prevStatus
+    let currentStatus = r.ReadByte ()
+    let eventType : EventType = EnumOfValue currentStatus
 
-    let et : EventType = EnumOfValue status
-
-    let data =
-        match et with
+    let (data, nextStatus) =
+        match eventType with
         | EventType.Meta ->
-            EventData.MetaEvent ( ParseMetaEvent r )
+            (ParseMetaEvent (r), runningStatus)
         | EventType.SysExSimple | EventType.SysExRaw ->
-            ParseSysExEvent ( r, et )
-        | _ -> EventData.MidiEvent ( ParseMidiEvent (r, status) )
+            (ParseSysExEvent (r, eventType), runningStatus)
+        | _ ->
+            ParseMidiEvent (r, runningStatus, currentStatus)
 
-    status, {
+    let event = {
         Delta = delta
-        Status = status
+        Status = currentStatus
         EventData = data
     }
 
-let LoadTrack (r: BinaryReader) =
-    // TODO: Resolve this hot mess.
-    let status', event' = ParseEvent (r, 0uy)
-    let mutable status = status'
-    let mutable event = event'
+    match data with
+    | EventData.MetaEvent (_, EndOfTrack) -> event :: events
+    | _ -> ParseEvents (r, nextStatus, event :: events)
 
+let LoadTrack (r: BinaryReader) =
     ChunkData.Track {
-        Events = [
-            yield event
-            while (match event.EventData with | EventData.MetaEvent (c, EndOfTrack) -> false | _ -> true)
-                do
-                    let status', event' = ParseEvent (r, status)
-                    status <- status'
-                    event <- event'
-                    yield event
-        ]
+        Events =
+            ParseEvents (r, None, [])
+            |> List.rev
     }
 
 let LoadChunk (r: BinaryReader) =
