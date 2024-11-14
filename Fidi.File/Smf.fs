@@ -129,40 +129,25 @@ type Track = {
     Events: Event list
 }
 
-type ChunkData =
-    | Header of Header
-    | Track  of Track
-
 type Magic =
     | Header = 1684558925 // MThd
     | Track  = 1802654797 // MTrk
 
-type Chunk = {
+type Chunk<'T> = {
     Magic : Magic
     Length: uint32
-    Data  : ChunkData
+    Data  : 'T
 }
 
 type File = {
-    Header: Chunk
-    Tracks: Chunk list
+    Header: Chunk<Header>
+    Tracks: Chunk<Track> list
 }
 
 let ParseDivision (d: uint16) =
     match d &&& 0x8000us with
     | 0x8000us -> Division.SmpteFramesPerSecond(byte (d &&& 0x00FFus), byte ((d &&& 0x7F00us) >>> 8))
     | _ -> Division.TicksPerQuarterNote d
-
-let LoadHeader (r: BinaryReader) =
-    let format: Format = EnumOfValue(read16 r)
-    let trackcount = read16 r
-    let division = ParseDivision(read16 r)
-
-    ChunkData.Header {
-        Format = format
-        TrackCount = trackcount
-        Division = division
-    }
 
 let ParseMetaEvent (r: BinaryReader) =
     let type': MetaEventType = EnumOfValue(r.ReadByte())
@@ -257,40 +242,39 @@ let rec ParseEvents (r: BinaryReader, runningStatus: byte option, events: Event 
     | EventData.MetaEvent(_, EndOfTrack) -> event :: events
     | _ -> ParseEvents(r, nextStatus, event :: events)
 
-let LoadTrack (r: BinaryReader) =
-    ChunkData.Track {
-        Events = ParseEvents(r, None, []) |> List.rev
-    }
-
-let LoadChunk (r: BinaryReader) =
+let ParseChunk<'T> (r: BinaryReader, expectedMagic: Magic, parseData: BinaryReader -> 'T) : Chunk<'T> =
     let magic: Magic = EnumOfValue(r.ReadInt32())
-    let length = read32 r
+    if magic <> expectedMagic then
+        failwith $"Expected {expectedMagic} chunk, got {magic}"
 
     // TODO: Check if length matches content.
+    let length = read32 r
 
     {
         Magic = magic
         Length = length
-        Data =
-            match magic with
-            | Magic.Header -> LoadHeader r
-            | Magic.Track  -> LoadTrack r
-            | _ -> failwith (sprintf "Unknown magic bytes %A" magic)
+        Data = parseData r
     }
 
 let LoadFile (r: BinaryReader) =
-    let header = LoadChunk r
+    let parseHeader (r: BinaryReader) =
+        {
+            Format = EnumOfValue(read16 r)
+            TrackCount = read16 r
+            Division = ParseDivision(read16 r)
+        }
 
-    let trackCount =
-        match header.Data with
-        | ChunkData.Header h -> h.TrackCount
-        | _ -> failwith "No header"
+    let parseTrack (r: BinaryReader) =
+        {
+            Events = ParseEvents(r, None, []) |> List.rev
+        }
+
+    let header = ParseChunk(r, Magic.Header, parseHeader)
 
     {
         Header = header
         Tracks = [
-            for track in [ 1 .. int trackCount ] do
-                // TODO: Check if chunk is track.
-                yield LoadChunk r
+            for _ in [ 1 .. int header.Data.TrackCount ] do
+                yield ParseChunk(r, Magic.Track, parseTrack)
         ]
     }
